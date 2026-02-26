@@ -73,18 +73,45 @@
             </section>
 
             <section class="chart-section">
+                <div class="chart-header">
+                    <h2>Mortgage Amortization</h2>
+                    <select id="mortgageTimeframe" class="timeframe-select">
+                        <option value="10">10 Years</option>
+                        <option value="30" selected>30 Years</option>
+                        <option value="60">60 Years</option>
+                        <option value="all">Full Duration</option>
+                    </select>
+                </div>
                 <div class="chart-container">
                     <canvas id="mortgageChart"></canvas>
                 </div>
             </section>
 
             <section class="chart-section">
+                <div class="chart-header">
+                    <h2>Portfolio Growth</h2>
+                    <select id="portfolioTimeframe" class="timeframe-select">
+                        <option value="10">10 Years</option>
+                        <option value="30" selected>30 Years</option>
+                        <option value="60">60 Years</option>
+                        <option value="all">Full Duration</option>
+                    </select>
+                </div>
                 <div class="chart-container">
                     <canvas id="portfolioChart"></canvas>
                 </div>
             </section>
 
             <section class="chart-section">
+                <div class="chart-header">
+                    <h2>Net Worth</h2>
+                    <select id="netWorthTimeframe" class="timeframe-select">
+                        <option value="10">10 Years</option>
+                        <option value="30" selected>30 Years</option>
+                        <option value="60">60 Years</option>
+                        <option value="all">Full Duration</option>
+                    </select>
+                </div>
                 <div class="chart-container">
                     <canvas id="netWorthChart"></canvas>
                 </div>

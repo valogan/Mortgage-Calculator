@@ -11,9 +11,16 @@ const monthlyPaymentVal = document.getElementById('monthlyPaymentVal');
 const totalInterestVal = document.getElementById('totalInterestVal');
 const totalCostVal = document.getElementById('totalCostVal');
 
+const mortgageTimeframeInput = document.getElementById('mortgageTimeframe');
+const portfolioTimeframeInput = document.getElementById('portfolioTimeframe');
+const netWorthTimeframeInput = document.getElementById('netWorthTimeframe');
+
 let mortgageChart = null;
 let portfolioChart = null;
 let netWorthChart = null;
+
+// Store full data so inputs don't require full recalculation
+let fullDataStore = {};
 
 function formatCurrency(num) {
     return new Intl.NumberFormat('en-US', {
@@ -58,57 +65,68 @@ function calculateMortgage() {
 
     let currentBalance = P;
     let totalInterest = 0;
-    let currentPortfolio = initialPortfolio;
+    const downpayment = Math.max(0, initialHomeValue - P);
+    let currentPortfolio = initialPortfolio - downpayment;
     let currentHomeValue = initialHomeValue;
 
     let annualPrincipalAccumulator = 0;
 
-    // Max 100 years to prevent infinite loop just in case
-    const maxMonths = 100 * 12;
+    // Simulate 60 years to see long-term net worth
+    const maxMonths = 60 * 12;
     const rMarket = (marketReturnPercent / 100) / 12; // Monthly market return
     const rHome = (homeAppreciationPercent / 100) / 12; // Monthly home appreciation
 
+    let previousBalance = currentBalance;
+
     for (let month = 1; month <= maxMonths; month++) {
-        const interestForMonth = currentBalance * r;
-        let principalForMonth = actualMonthlyPayment - interestForMonth;
+        let interestForMonth = 0;
+        let principalForMonth = 0;
+        let paymentFromPortfolio = 0;
 
-        if (principalForMonth > currentBalance) {
-            principalForMonth = currentBalance; // final payoff
+        if (currentBalance > 0) {
+            interestForMonth = currentBalance * r;
+            principalForMonth = actualMonthlyPayment - interestForMonth;
+
+            if (principalForMonth > currentBalance) {
+                principalForMonth = currentBalance; // final payoff
+            }
+
+            paymentFromPortfolio = interestForMonth + principalForMonth;
+            currentBalance -= principalForMonth;
+            if (currentBalance < 0) currentBalance = 0;
         }
-
-        currentBalance -= principalForMonth;
-        if (currentBalance < 0) currentBalance = 0;
 
         // Portfolio changes (grow by return, then subtract payment)
-        if (currentPortfolio > 0) {
-            currentPortfolio += currentPortfolio * rMarket;
-            currentPortfolio -= actualMonthlyPayment;
-        }
+        currentPortfolio += currentPortfolio * rMarket;
+        currentPortfolio -= paymentFromPortfolio;
 
         currentHomeValue += currentHomeValue * rHome;
 
         annualPrincipalAccumulator += principalForMonth;
         totalInterest += interestForMonth;
 
-        if (month % 12 === 0 || currentBalance === 0 || month === n) {
+        const isPayoffMonth = (currentBalance === 0 && previousBalance > 0);
+
+        if (month % 12 === 0 || isPayoffMonth || (month === n && currentBalance > 0)) {
             const year = month % 12 === 0 ? month / 12 : Number((month / 12).toFixed(1));
-            labels.push(`Year ${year}`);
-            balanceData.push(currentBalance);
-            interestPerMonthData.push(interestForMonth);
-            principalPerYearData.push(annualPrincipalAccumulator);
-            portfolioData.push(currentPortfolio);
-            portfolioPaymentData.push(actualMonthlyPayment);
+            const yearLabel = `Year ${year}`;
 
-            const currentHomeEquity = currentHomeValue - currentBalance;
-            homeEquityData.push(currentHomeEquity);
-            netWorthData.push(currentHomeEquity + currentPortfolio);
+            if (labels.length === 0 || labels[labels.length - 1] !== yearLabel) {
+                labels.push(yearLabel);
+                balanceData.push(currentBalance);
+                interestPerMonthData.push(interestForMonth);
+                principalPerYearData.push(annualPrincipalAccumulator);
+                portfolioData.push(currentPortfolio);
+                portfolioPaymentData.push(paymentFromPortfolio);
 
-            annualPrincipalAccumulator = 0;
+                const currentHomeEquity = currentHomeValue - currentBalance;
+                homeEquityData.push(currentHomeEquity);
+                netWorthData.push(currentHomeEquity + currentPortfolio);
 
-            if (currentBalance === 0) {
-                break; // Fully paid off!
+                annualPrincipalAccumulator = 0;
             }
         }
+        previousBalance = currentBalance;
     }
 
     // Update UI Stats
@@ -116,9 +134,73 @@ function calculateMortgage() {
     totalInterestVal.textContent = formatCurrency(totalInterest);
     totalCostVal.textContent = formatCurrency(P + totalInterest);
 
-    updateChart(labels, balanceData, interestPerMonthData, principalPerYearData);
-    updatePortfolioChart(labels, portfolioData, portfolioPaymentData);
-    updateNetWorthChart(labels, netWorthData, homeEquityData, portfolioData);
+    // Save off data to be able to apply filters
+    fullDataStore = {
+        labels,
+        balanceData,
+        interestPerMonthData,
+        principalPerYearData,
+        portfolioData,
+        portfolioPaymentData,
+        homeEquityData,
+        netWorthData
+    };
+
+    renderCharts();
+}
+
+function processTimeframeFilter(timeframeValue, labels, ...datasets) {
+    if (timeframeValue === 'all') return [labels, ...datasets];
+
+    const limit = parseInt(timeframeValue, 10);
+    const filteredLabels = [];
+    const filteredDatasets = datasets.map(() => []);
+
+    for (let i = 0; i < labels.length; i++) {
+        // label format: "Year X" or "Year X.X"
+        const yearVal = parseFloat(labels[i].replace('Year ', ''));
+        if (yearVal <= limit) {
+            filteredLabels.push(labels[i]);
+            datasets.forEach((data, index) => {
+                filteredDatasets[index].push(data[i]);
+            });
+        }
+    }
+
+    return [filteredLabels, ...filteredDatasets];
+}
+
+function renderCharts() {
+    if (!fullDataStore.labels) return;
+
+    // Filter Mortgage Chart
+    const [mortgageLabels, fBalanceData, fInterestPerMonthData, fPrincipalPerYearData] = processTimeframeFilter(
+        mortgageTimeframeInput.value,
+        fullDataStore.labels,
+        fullDataStore.balanceData,
+        fullDataStore.interestPerMonthData,
+        fullDataStore.principalPerYearData
+    );
+    updateChart(mortgageLabels, fBalanceData, fInterestPerMonthData, fPrincipalPerYearData);
+
+    // Filter Portfolio Chart
+    const [portfolioLabels, fPortfolioData, fPortfolioPaymentData] = processTimeframeFilter(
+        portfolioTimeframeInput.value,
+        fullDataStore.labels,
+        fullDataStore.portfolioData,
+        fullDataStore.portfolioPaymentData
+    );
+    updatePortfolioChart(portfolioLabels, fPortfolioData, fPortfolioPaymentData);
+
+    // Filter Net Worth Chart
+    const [netWorthLabels, fNetWorthData, fHomeEquityData, fPortfolioNetWorthData] = processTimeframeFilter(
+        netWorthTimeframeInput.value,
+        fullDataStore.labels,
+        fullDataStore.netWorthData,
+        fullDataStore.homeEquityData,
+        fullDataStore.portfolioData
+    );
+    updateNetWorthChart(netWorthLabels, fNetWorthData, fHomeEquityData, fPortfolioNetWorthData);
 }
 
 function updateChart(labels, balanceData, interestPerMonthData, principalPerYearData) {
@@ -503,9 +585,18 @@ function updateNetWorthChart(labels, netWorthData, homeEquityData, portfolioData
     });
 }
 
-const inputs = [loanAmountInput, interestRateInput, loanTermInput, extraPaymentInput, initialPortfolioInput, marketReturnInput, homeValueInput, homeAppreciationRateInput];
+const inputs = [
+    loanAmountInput, interestRateInput, loanTermInput, extraPaymentInput,
+    initialPortfolioInput, marketReturnInput, homeValueInput, homeAppreciationRateInput
+];
+
 inputs.forEach(input => {
     input.addEventListener('input', calculateMortgage);
+});
+
+const timeframeInputs = [mortgageTimeframeInput, portfolioTimeframeInput, netWorthTimeframeInput];
+timeframeInputs.forEach(input => {
+    input.addEventListener('change', renderCharts);
 });
 
 // Initial calculation
